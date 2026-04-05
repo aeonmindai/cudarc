@@ -499,6 +499,29 @@ impl CudaContext {
             ctx: self.clone(),
         }))
     }
+
+    /// Create a CU_STREAM_DEFAULT stream as the primary device stream.
+    ///
+    /// Creates a real non-NULL stream (capturable) that synchronizes with
+    /// the legacy default stream. Disables event tracking to prevent
+    /// synchronization overhead and data corruption when this is used
+    /// as the sole stream on the device.
+    ///
+    /// # Safety
+    /// The caller must ensure this is used as the ONLY stream on the context.
+    /// Event tracking is disabled globally on this context.
+    pub unsafe fn new_primary_stream(self: &Arc<Self>) -> Result<Arc<CudaStream>, DriverError> {
+        self.bind_to_thread()?;
+        // Disable event tracking BEFORE creating the stream.
+        // This prevents cudarc from inserting events between operations.
+        self.disable_event_tracking();
+        self.num_streams.fetch_add(1, Ordering::Relaxed);
+        let cu_stream = result::stream::create(result::stream::StreamKind::Default)?;
+        Ok(Arc::new(CudaStream {
+            cu_stream,
+            ctx: self.clone(),
+        }))
+    }
 }
 
 impl CudaStream {
