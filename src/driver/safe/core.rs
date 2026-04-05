@@ -477,6 +477,28 @@ impl CudaContext {
             ctx: self.clone(),
         }))
     }
+
+    /// Create a new stream with [sys::CUstream_flags::CU_STREAM_DEFAULT] flags.
+    ///
+    /// Unlike [CudaContext::new_stream()] which creates a non-blocking stream,
+    /// this creates a blocking stream that synchronizes with the legacy default
+    /// stream (stream 0). It is a real non-NULL stream object, which means it
+    /// supports CUDA graph capture via [cuStreamBeginCapture].
+    ///
+    /// Use this when you need graph capture compatibility without breaking
+    /// code that assumes legacy default stream synchronization semantics.
+    pub fn new_default_stream(self: &Arc<Self>) -> Result<Arc<CudaStream>, DriverError> {
+        self.bind_to_thread()?;
+        let prev_num_streams = self.num_streams.fetch_add(1, Ordering::Relaxed);
+        if prev_num_streams == 0 && self.is_event_tracking() {
+            self.synchronize()?;
+        }
+        let cu_stream = result::stream::create(result::stream::StreamKind::Default)?;
+        Ok(Arc::new(CudaStream {
+            cu_stream,
+            ctx: self.clone(),
+        }))
+    }
 }
 
 impl CudaStream {
